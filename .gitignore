@@ -88,3 +88,5 @@ htmlcov/
 *.tmp
 *.temp
 *.swp
+
+backup.json

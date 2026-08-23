@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://trueclaim-backend.onrender.com/api";
 
 const ACCESS_KEY = "pf_access_token";
 const REFRESH_KEY = "pf_refresh_token";
