@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pf_reviews
+      POSTGRES_USER: pf_user
+      POSTGRES_PASSWORD: pf_password
+    volumes:
+      - pf_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pf_user -d pf_reviews"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://pf_user:pf_password@db:5432/pf_reviews
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Only relevant when USE_S3_PROOF_STORAGE=false (single-server setups).
+      # Never mounted world-readable; only the app container can reach it.
+      - pf_media_private:/app/media_private
+      - pf_staticfiles:/app/staticfiles
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000/api
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pf_pgdata:
+  pf_media_private:
+  pf_staticfiles:
