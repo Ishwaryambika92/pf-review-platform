@@ -1,7 +1,9 @@
 from .base import *  # noqa
+
 from corsheaders.defaults import default_headers
 
 DEBUG = True
+
 ALLOWED_HOSTS = ["*"]
 
 DATABASES = {
@@ -16,3 +18,16 @@ CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_HEADERS = list(default_headers) + [
     "x-anonymous-id",
 ]
+
+# ---------------------------------------------------------
+# LOCAL FILE STORAGE
+# ---------------------------------------------------------
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
