@@ -128,7 +128,7 @@ if os.environ.get(
 
     AWS_DEFAULT_ACL = None
 
-    AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_FILE_OVERWRITE = True
 
     AWS_QUERYSTRING_AUTH = True
 
