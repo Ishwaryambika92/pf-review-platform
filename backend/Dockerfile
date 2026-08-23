@@ -9,14 +9,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
 RUN adduser --disabled-password --no-create-home appuser \
     && mkdir -p /app/media_private /app/staticfiles \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/entrypoint.sh
+
 USER appuser
 
-EXPOSE 8000
+EXPOSE 10000
+
 ENTRYPOINT ["./entrypoint.sh"]
