@@ -29,6 +29,14 @@ const STEP_KEYS = [
 
 type RecommendationChoice = "yes" | "maybe" | "no" | null;
 
+const MAX_PROOF_SIZE = 2 * 1024 * 1024;
+
+const ALLOWED_PROOF_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "application/pdf",
+];
+
 export function SubmitReviewFlow({
   services,
   onClose,
@@ -40,7 +48,9 @@ export function SubmitReviewFlow({
 
   const [step, setStep] = useState(1);
 
-  const [serviceId, setServiceId] = useState(services[0]?.id || "");
+  const [serviceId, setServiceId] = useState(
+    services[0]?.id || ""
+  );
 
   const [serviceDate, setServiceDate] = useState(
     new Date().toISOString().slice(0, 10)
@@ -50,22 +60,21 @@ export function SubmitReviewFlow({
 
   const [rating, setRating] = useState(0);
 
-  const [subRatings, setSubRatings] = useState<Record<string, number>>({});
+  const [subRatings, setSubRatings] = useState<
+    Record<string, number>
+  >({});
 
   const [title, setTitle] = useState("");
 
   const [body, setBody] = useState("");
 
-  // Optional fields
   const [pros, setPros] = useState("");
+
   const [cons, setCons] = useState("");
 
-  // Recommendation
-  // IMPORTANT: initially null = nothing selected
   const [recommendationChoice, setRecommendationChoice] =
     useState<RecommendationChoice>(null);
 
-  // Temporary emoji animation
   const [recommendationReaction, setRecommendationReaction] =
     useState<RecommendationChoice>(null);
 
@@ -79,9 +88,13 @@ export function SubmitReviewFlow({
 
   const [error, setError] = useState<string | null>(null);
 
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<
+    Record<string, string>
+  >({});
 
-  const [result, setResult] = useState<{ reference_id: string } | null>(null);
+  const [result, setResult] = useState<{
+    reference_id: string;
+  } | null>(null);
 
   /*
    * Auto title based on rating
@@ -109,27 +122,26 @@ export function SubmitReviewFlow({
   };
 
   /*
-   * Recommendation value sent to backend
-   *
-   * yes   -> true
-   * maybe -> null
-   * no    -> false
+   * Recommendation value
    */
   const getRecommendationValue = (): boolean | null => {
-    if (recommendationChoice === "yes") return true;
+    if (recommendationChoice === "yes") {
+      return true;
+    }
 
-    if (recommendationChoice === "no") return false;
+    if (recommendationChoice === "no") {
+      return false;
+    }
 
     return null;
   };
 
   /*
-   * Show ONE emoji only.
+   * Emoji animation
    */
   const triggerRecommendationReaction = (
     reaction: Exclude<RecommendationChoice, null>
   ) => {
-    // Reset first so animation can restart
     setRecommendationReaction(null);
 
     requestAnimationFrame(() => {
@@ -149,7 +161,6 @@ export function SubmitReviewFlow({
   ) => {
     setRecommendationChoice(choice);
 
-    // Remove recommendation validation error
     setFieldErrors((current) => {
       const next = { ...current };
       delete next.recommendation;
@@ -157,6 +168,51 @@ export function SubmitReviewFlow({
     });
 
     triggerRecommendationReaction(choice);
+  };
+
+  /*
+   * Validate selected proof
+   */
+  const validateProofFile = (
+    selectedFile: File
+  ): string | null => {
+    if (!ALLOWED_PROOF_TYPES.includes(selectedFile.type)) {
+      return "Only JPG, PNG or PDF files are allowed.";
+    }
+
+    if (selectedFile.size > MAX_PROOF_SIZE) {
+      return "Proof file must be 2 MB or smaller.";
+    }
+
+    if (selectedFile.size === 0) {
+      return "The selected file is empty.";
+    }
+
+    return null;
+  };
+
+  /*
+   * Handle proof selection
+   */
+  const handleProofChange = (
+    selectedFile: File | undefined
+  ) => {
+    if (!selectedFile) {
+      return;
+    }
+
+    setError(null);
+
+    const validationError =
+      validateProofFile(selectedFile);
+
+    if (validationError) {
+      setFile(null);
+      setError(validationError);
+      return;
+    }
+
+    setFile(selectedFile);
   };
 
   /*
@@ -182,9 +238,9 @@ export function SubmitReviewFlow({
         errs.body = t("val_body_required");
       }
 
-      // Recommendation is REQUIRED
       if (recommendationChoice === null) {
-        errs.recommendation = t("val_recommendation_required");
+        errs.recommendation =
+          t("val_recommendation_required");
       }
     }
 
@@ -197,33 +253,58 @@ export function SubmitReviewFlow({
    * Submit review
    */
   const submit = async () => {
-    if (!validateStep()) return;
-
-    setSubmitting(true);
     setError(null);
 
+    if (!validateStep()) {
+      return;
+    }
+
+    /*
+     * Validate proof again before sending.
+     * This protects against invalid file state.
+     */
+    if (file) {
+      const proofError = validateProofFile(file);
+
+      if (proofError) {
+        setError(proofError);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+
     try {
+      /*
+       * STEP 1
+       * Create review
+       */
       const review = await api.submitReview({
         service: serviceId,
-        title,
-        body,
 
-        // Optional fields
-        pros,
-        cons,
+        title: title.trim(),
 
-        // Recommendation
-        would_recommend: getRecommendationValue(),
+        body: body.trim(),
+
+        pros: pros.trim(),
+
+        cons: cons.trim(),
+
+        would_recommend:
+          getRecommendationValue(),
 
         is_anonymous: isAnonymous,
 
-        reviewer_name: isAnonymous ? "" : reviewerName,
+        reviewer_name: isAnonymous
+          ? ""
+          : reviewerName.trim(),
 
         language: lang,
 
         service_date: serviceDate,
 
-        allow_privacy_safe_indicator: allowIndicator,
+        allow_privacy_safe_indicator:
+          allowIndicator,
 
         rating: {
           overall: rating,
@@ -232,20 +313,46 @@ export function SubmitReviewFlow({
       });
 
       /*
-       * Upload proof if selected
+       * STEP 2
+       * Upload proof AFTER review is created.
        */
       if (file) {
         try {
-          await api.uploadProof(review.id, file);
-        } catch (upErr) {
-          console.error("Proof upload failed", upErr);
+          await api.uploadProof(
+            review.id,
+            file
+          );
+        } catch (uploadError: any) {
+          console.error(
+            "PROOF UPLOAD FAILED:",
+            uploadError
+          );
+
+          /*
+           * Important:
+           * Do NOT silently continue.
+           */
+          throw new Error(
+            uploadError?.message ||
+              "Proof upload failed. Please try again."
+          );
         }
       }
 
+      /*
+       * STEP 3
+       * Only show success after proof upload succeeds.
+       */
       setResult({
-        reference_id: review.reference_id,
+        reference_id:
+          review.reference_id,
       });
     } catch (e: any) {
+      console.error(
+        "REVIEW SUBMISSION ERROR:",
+        e
+      );
+
       const bodyError = e?.body;
 
       const msg =
@@ -253,6 +360,7 @@ export function SubmitReviewFlow({
           typeof bodyError === "object" &&
           (bodyError.non_field_errors?.[0] ||
             Object.values(bodyError).flat()[0])) ||
+        e?.message ||
         t("submit_generic_error");
 
       setError(String(msg));
@@ -265,7 +373,11 @@ export function SubmitReviewFlow({
    * Next button
    */
   const goNext = () => {
-    if (!validateStep()) return;
+    setError(null);
+
+    if (!validateStep()) {
+      return;
+    }
 
     if (step < 5) {
       setStep(step + 1);
@@ -287,7 +399,6 @@ export function SubmitReviewFlow({
         padding: 16,
       }}
     >
-      {/* Emoji animation CSS */}
       <style>{`
         .pf-recommendation-reaction {
           position: absolute;
@@ -355,10 +466,12 @@ export function SubmitReviewFlow({
           overflowY: "auto",
           padding: 28,
           fontFamily: T.bodyFont,
-          boxShadow: "0 24px 64px rgba(12,32,54,0.3)",
+          boxShadow:
+            "0 24px 64px rgba(12,32,54,0.3)",
         }}
       >
         {/* HEADER */}
+
         <div
           style={{
             display: "flex",
@@ -392,6 +505,7 @@ export function SubmitReviewFlow({
         </div>
 
         {/* PROGRESS BAR */}
+
         {!result && (
           <div
             style={{
@@ -407,7 +521,10 @@ export function SubmitReviewFlow({
                   flex: 1,
                   height: 4,
                   borderRadius: 3,
-                  background: i + 1 <= step ? T.navy : T.line,
+                  background:
+                    i + 1 <= step
+                      ? T.navy
+                      : T.line,
                 }}
               />
             ))}
@@ -415,6 +532,7 @@ export function SubmitReviewFlow({
         )}
 
         {/* SUCCESS */}
+
         {result ? (
           <div
             style={{
@@ -427,19 +545,24 @@ export function SubmitReviewFlow({
                 width: 56,
                 height: 56,
                 borderRadius: "50%",
-                background: T.verifiedSoft,
+                background:
+                  T.verifiedSoft,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 margin: "0 auto 16px",
               }}
             >
-              <Check size={28} color={T.verified} />
+              <Check
+                size={28}
+                color={T.verified}
+              />
             </div>
 
             <div
               style={{
-                fontFamily: T.displayFont,
+                fontFamily:
+                  T.displayFont,
                 fontSize: 20,
                 fontWeight: 600,
                 color: T.ink,
@@ -472,7 +595,8 @@ export function SubmitReviewFlow({
                 color: T.navy,
               }}
             >
-              {t("reference_id")}: {result.reference_id}
+              {t("reference_id")}:{" "}
+              {result.reference_id}
             </div>
 
             <div>
@@ -497,6 +621,7 @@ export function SubmitReviewFlow({
         ) : (
           <>
             {/* STEP 1 */}
+
             {step === 1 && (
               <div
                 style={{
@@ -511,36 +636,65 @@ export function SubmitReviewFlow({
                 >
                   <select
                     value={serviceId}
-                    onChange={(e) => setServiceId(e.target.value)}
+                    onChange={(e) =>
+                      setServiceId(
+                        e.target.value
+                      )
+                    }
                     style={selectStyle}
                   >
                     {services.map((s) => (
-                      <option key={s.id} value={s.id}>
+                      <option
+                        key={s.id}
+                        value={s.id}
+                      >
                         {s.name}
                       </option>
                     ))}
                   </select>
                 </Field>
 
-                <Field label={t("field_service_date")}>
+                <Field
+                  label={t(
+                    "field_service_date"
+                  )}
+                >
                   <input
                     type="date"
                     value={serviceDate}
-                    max={new Date().toISOString().slice(0, 10)}
-                    onChange={(e) => setServiceDate(e.target.value)}
+                    max={new Date()
+                      .toISOString()
+                      .slice(0, 10)}
+                    onChange={(e) =>
+                      setServiceDate(
+                        e.target.value
+                      )
+                    }
                     style={selectStyle}
                   />
                 </Field>
 
-                <Field label={t("field_reviewer_name")}>
+                <Field
+                  label={t(
+                    "field_reviewer_name"
+                  )}
+                >
                   <input
                     value={reviewerName}
-                    onChange={(e) => setReviewerName(e.target.value)}
-                    placeholder={t("field_reviewer_name_placeholder")}
+                    onChange={(e) =>
+                      setReviewerName(
+                        e.target.value
+                      )
+                    }
+                    placeholder={t(
+                      "field_reviewer_name_placeholder"
+                    )}
                     disabled={isAnonymous}
                     style={{
                       ...selectStyle,
-                      opacity: isAnonymous ? 0.5 : 1,
+                      opacity: isAnonymous
+                        ? 0.5
+                        : 1,
                     }}
                   />
                 </Field>
@@ -557,7 +711,9 @@ export function SubmitReviewFlow({
                     id="anon"
                     checked={isAnonymous}
                     onChange={(e) =>
-                      setIsAnonymous(e.target.checked)
+                      setIsAnonymous(
+                        e.target.checked
+                      )
                     }
                     style={{
                       width: 16,
@@ -572,13 +728,16 @@ export function SubmitReviewFlow({
                       color: T.inkSoft,
                     }}
                   >
-                    {t("field_anonymous")}
+                    {t(
+                      "field_anonymous"
+                    )}
                   </label>
                 </div>
               </div>
             )}
 
             {/* STEP 2 */}
+
             {step === 2 && (
               <div
                 style={{
@@ -596,7 +755,9 @@ export function SubmitReviewFlow({
                       marginBottom: 8,
                     }}
                   >
-                    {t("field_overall_rating")}
+                    {t(
+                      "field_overall_rating"
+                    )}
                   </div>
 
                   <div
@@ -605,25 +766,39 @@ export function SubmitReviewFlow({
                       gap: 4,
                     }}
                   >
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          setRating(i);
+                    {[1, 2, 3, 4, 5].map(
+                      (i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setRating(i);
 
-                          if (!title.trim()) {
-                            setTitle(getAutoTitle(i));
-                          }
-                        }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <StarIcon filled={i <= rating} />
-                      </button>
-                    ))}
+                            if (
+                              !title.trim()
+                            ) {
+                              setTitle(
+                                getAutoTitle(
+                                  i
+                                )
+                              );
+                            }
+                          }}
+                          style={{
+                            background:
+                              "none",
+                            border: "none",
+                            cursor:
+                              "pointer",
+                          }}
+                        >
+                          <StarIcon
+                            filled={
+                              i <= rating
+                            }
+                          />
+                        </button>
+                      )
+                    )}
                   </div>
 
                   {fieldErrors.rating && (
@@ -640,10 +815,26 @@ export function SubmitReviewFlow({
                 </div>
 
                 {[
-                  ["quality", t("field_quality")],
-                  ["communication", t("field_communication")],
-                  ["transparency", t("field_transparency")],
-                  ["value_for_money", t("field_value")],
+                  [
+                    "quality",
+                    t("field_quality"),
+                  ],
+                  [
+                    "communication",
+                    t(
+                      "field_communication"
+                    ),
+                  ],
+                  [
+                    "transparency",
+                    t(
+                      "field_transparency"
+                    ),
+                  ],
+                  [
+                    "value_for_money",
+                    t("field_value"),
+                  ],
                 ].map(([key, label]) => (
                   <Field
                     key={key}
@@ -656,27 +847,38 @@ export function SubmitReviewFlow({
                         gap: 3,
                       }}
                     >
-                      {[1, 2, 3, 4, 5].map((i) => (
-                        <button
-                          key={i}
-                          onClick={() =>
-                            setSubRatings((s) => ({
-                              ...s,
-                              [key]: i,
-                            }))
-                          }
-                          style={{
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <StarIcon
-                            filled={i <= (subRatings[key] || 0)}
-                            size={16}
-                          />
-                        </button>
-                      ))}
+                      {[1, 2, 3, 4, 5].map(
+                        (i) => (
+                          <button
+                            key={i}
+                            onClick={() =>
+                              setSubRatings(
+                                (s) => ({
+                                  ...s,
+                                  [key]: i,
+                                })
+                              )
+                            }
+                            style={{
+                              background:
+                                "none",
+                              border: "none",
+                              cursor:
+                                "pointer",
+                            }}
+                          >
+                            <StarIcon
+                              filled={
+                                i <=
+                                (subRatings[
+                                  key
+                                ] || 0)
+                              }
+                              size={16}
+                            />
+                          </button>
+                        )
+                      )}
                     </div>
                   </Field>
                 ))}
@@ -684,6 +886,7 @@ export function SubmitReviewFlow({
             )}
 
             {/* STEP 3 */}
+
             {step === 3 && (
               <div
                 style={{
@@ -692,20 +895,24 @@ export function SubmitReviewFlow({
                   gap: 16,
                 }}
               >
-                {/* TITLE */}
                 <Field
                   label={t("field_title")}
                   error={fieldErrors.title}
                 >
                   <input
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder={t("field_title_placeholder")}
+                    onChange={(e) =>
+                      setTitle(
+                        e.target.value
+                      )
+                    }
+                    placeholder={t(
+                      "field_title_placeholder"
+                    )}
                     style={selectStyle}
                   />
                 </Field>
 
-                {/* WHAT SHOULD I WRITE */}
                 <div
                   style={{
                     background: "#EEF3FF",
@@ -727,7 +934,9 @@ export function SubmitReviewFlow({
                   >
                     <Lightbulb size={15} />
 
-                    {t("what_should_i_write")}
+                    {t(
+                      "what_should_i_write"
+                    )}
                   </div>
 
                   <div
@@ -739,7 +948,9 @@ export function SubmitReviewFlow({
                       marginBottom: 10,
                     }}
                   >
-                    {t("what_should_i_write_body")}
+                    {t(
+                      "what_should_i_write_body"
+                    )}
                   </div>
 
                   <div
@@ -753,15 +964,18 @@ export function SubmitReviewFlow({
                       paddingTop: 8,
                     }}
                   >
-                    {t("example_review")}
+                    {t(
+                      "example_review"
+                    )}
                   </div>
                 </div>
 
-                {/* MAIN EXPERIENCE */}
                 <Field
                   label={
                     <>
-                      {t("review_experience_title")}
+                      {t(
+                        "review_experience_title"
+                      )}
 
                       <span className="pf-required-label">
                         {t("required")}
@@ -777,14 +991,22 @@ export function SubmitReviewFlow({
                       marginBottom: 6,
                     }}
                   >
-                    {t("review_experience_hint")}
+                    {t(
+                      "review_experience_hint"
+                    )}
                   </div>
 
                   <textarea
                     value={body}
-                    onChange={(e) => setBody(e.target.value)}
+                    onChange={(e) =>
+                      setBody(
+                        e.target.value
+                      )
+                    }
                     rows={5}
-                    placeholder={t("field_body_placeholder")}
+                    placeholder={t(
+                      "field_body_placeholder"
+                    )}
                     style={{
                       ...selectStyle,
                       resize: "none",
@@ -792,7 +1014,6 @@ export function SubmitReviewFlow({
                   />
                 </Field>
 
-                {/* GENUINE NOTICE */}
                 <div
                   style={{
                     fontSize: 12,
@@ -803,16 +1024,19 @@ export function SubmitReviewFlow({
                   {t("genuine_notice")}
                 </div>
 
-                {/* WHAT WENT WELL */}
-                <Field label={
-                  <>
-                    {t("what_went_well")}
+                <Field
+                  label={
+                    <>
+                      {t(
+                        "what_went_well"
+                      )}
 
-                    <span className="pf-optional-label">
-                      {t("optional")}
-                    </span>
-                  </>
-                }>
+                      <span className="pf-optional-label">
+                        {t("optional")}
+                      </span>
+                    </>
+                  }
+                >
                   <div
                     style={{
                       fontSize: 12,
@@ -820,14 +1044,22 @@ export function SubmitReviewFlow({
                       marginBottom: 6,
                     }}
                   >
-                    {t("what_went_well_hint")}
+                    {t(
+                      "what_went_well_hint"
+                    )}
                   </div>
 
                   <textarea
                     value={pros}
-                    onChange={(e) => setPros(e.target.value)}
+                    onChange={(e) =>
+                      setPros(
+                        e.target.value
+                      )
+                    }
                     rows={3}
-                    placeholder={t("what_went_well_placeholder")}
+                    placeholder={t(
+                      "what_went_well_placeholder"
+                    )}
                     style={{
                       ...selectStyle,
                       resize: "none",
@@ -835,16 +1067,19 @@ export function SubmitReviewFlow({
                   />
                 </Field>
 
-                {/* WHAT COULD BE IMPROVED */}
-                <Field label={
-                  <>
-                    {t("what_could_improve")}
+                <Field
+                  label={
+                    <>
+                      {t(
+                        "what_could_improve"
+                      )}
 
-                    <span className="pf-optional-label">
-                      {t("optional")}
-                    </span>
-                  </>
-                }>
+                      <span className="pf-optional-label">
+                        {t("optional")}
+                      </span>
+                    </>
+                  }
+                >
                   <div
                     style={{
                       fontSize: 12,
@@ -852,14 +1087,22 @@ export function SubmitReviewFlow({
                       marginBottom: 6,
                     }}
                   >
-                    {t("what_could_improve_hint")}
+                    {t(
+                      "what_could_improve_hint"
+                    )}
                   </div>
 
                   <textarea
                     value={cons}
-                    onChange={(e) => setCons(e.target.value)}
+                    onChange={(e) =>
+                      setCons(
+                        e.target.value
+                      )
+                    }
                     rows={3}
-                    placeholder={t("what_could_improve_placeholder")}
+                    placeholder={t(
+                      "what_could_improve_placeholder"
+                    )}
                     style={{
                       ...selectStyle,
                       resize: "none",
@@ -867,18 +1110,21 @@ export function SubmitReviewFlow({
                   />
                 </Field>
 
-                {/* RECOMMENDATION */}
                 <Field
                   label={
                     <>
-                      {t("recommend_service")}
+                      {t(
+                        "recommend_service"
+                      )}
 
                       <span className="pf-required-label">
                         {t("required")}
                       </span>
                     </>
                   }
-                  error={fieldErrors.recommendation}
+                  error={
+                    fieldErrors.recommendation
+                  }
                 >
                   <div
                     style={{
@@ -887,44 +1133,60 @@ export function SubmitReviewFlow({
                       gap: 10,
                     }}
                   >
-                    {/* SINGLE EMOJI */}
                     {recommendationReaction && (
                       <div
-                        key={recommendationReaction}
+                        key={
+                          recommendationReaction
+                        }
                         className="pf-recommendation-reaction"
                         aria-hidden="true"
                       >
-                        {recommendationReaction === "yes" && "😊"}
+                        {recommendationReaction ===
+                          "yes" && "😊"}
 
-                        {recommendationReaction === "maybe" && "🤔"}
+                        {recommendationReaction ===
+                          "maybe" && "🤔"}
 
-                        {recommendationReaction === "no" && "😕"}
+                        {recommendationReaction ===
+                          "no" && "😕"}
                       </div>
                     )}
 
-                    {/* YES */}
                     <ToggleButton
-                      active={recommendationChoice === "yes"}
+                      active={
+                        recommendationChoice ===
+                        "yes"
+                      }
                       onClick={() =>
-                        selectRecommendation("yes")
+                        selectRecommendation(
+                          "yes"
+                        )
                       }
                       label={t("yes")}
                     />
 
-                    {/* MAYBE */}
                     <ToggleButton
-                      active={recommendationChoice === "maybe"}
+                      active={
+                        recommendationChoice ===
+                        "maybe"
+                      }
                       onClick={() =>
-                        selectRecommendation("maybe")
+                        selectRecommendation(
+                          "maybe"
+                        )
                       }
                       label={t("maybe")}
                     />
 
-                    {/* NO */}
                     <ToggleButton
-                      active={recommendationChoice === "no"}
+                      active={
+                        recommendationChoice ===
+                        "no"
+                      }
                       onClick={() =>
-                        selectRecommendation("no")
+                        selectRecommendation(
+                          "no"
+                        )
                       }
                       label={t("no")}
                     />
@@ -933,7 +1195,8 @@ export function SubmitReviewFlow({
               </div>
             )}
 
-            {/* STEP 4 */}
+            {/* STEP 4 — PROOF */}
+
             {step === 4 && (
               <div
                 style={{
@@ -945,7 +1208,8 @@ export function SubmitReviewFlow({
                 <div
                   style={{
                     background: "#FBF1DE",
-                    border: "1px solid #E8D3A1",
+                    border:
+                      "1px solid #E8D3A1",
                     borderRadius: 10,
                     padding: "12px 14px",
                     fontSize: 13,
@@ -978,16 +1242,24 @@ export function SubmitReviewFlow({
                         textAlign: "center",
                       }}
                     >
-                      {t("proof_upload_label")}
+                      Upload proof
+                      <br />
+                      JPG / PNG / PDF
+                      <br />
+                      Maximum 2 MB
                     </span>
 
                     <input
                       type="file"
                       accept="image/jpeg,image/png,application/pdf"
-                      style={{ display: "none" }}
+                      style={{
+                        display: "none",
+                      }}
                       onChange={(e) =>
-                        e.target.files?.[0] &&
-                        setFile(e.target.files[0])
+                        handleProofChange(
+                          e.target
+                            .files?.[0]
+                        )
                       }
                     />
                   </label>
@@ -995,19 +1267,23 @@ export function SubmitReviewFlow({
                   <div
                     style={{
                       display: "flex",
-                      justifyContent: "space-between",
+                      justifyContent:
+                        "space-between",
                       alignItems: "center",
                       border: `1px solid ${T.line}`,
                       borderRadius: 10,
-                      padding: "10px 14px",
+                      padding:
+                        "10px 14px",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
-                        alignItems: "center",
+                        alignItems:
+                          "center",
                         gap: 8,
                         fontSize: 13.5,
+                        minWidth: 0,
                       }}
                     >
                       <FileCheck2
@@ -1015,24 +1291,48 @@ export function SubmitReviewFlow({
                         color={T.verified}
                       />
 
-                      {file.name}
+                      <span
+                        style={{
+                          overflow:
+                            "hidden",
+                          textOverflow:
+                            "ellipsis",
+                          whiteSpace:
+                            "nowrap",
+                        }}
+                      >
+                        {file.name}
+                      </span>
 
                       <span
                         style={{
-                          color: T.inkFaint,
+                          color:
+                            T.inkFaint,
+                          whiteSpace:
+                            "nowrap",
                         }}
                       >
-                        ({Math.round(file.size / 1024)} KB)
+                        (
+                        {(
+                          file.size /
+                          1024
+                        ).toFixed(0)}{" "}
+                        KB)
                       </span>
                     </div>
 
                     <button
-                      onClick={() => setFile(null)}
+                      onClick={() =>
+                        setFile(null)
+                      }
                       style={{
-                        background: "none",
+                        background:
+                          "none",
                         border: "none",
-                        cursor: "pointer",
-                        color: T.inkFaint,
+                        cursor:
+                          "pointer",
+                        color:
+                          T.inkFaint,
                       }}
                     >
                       <X size={16} />
@@ -1040,18 +1340,44 @@ export function SubmitReviewFlow({
                   </div>
                 )}
 
+                {error && (
+                  <div
+                    style={{
+                      background:
+                        "#FFF1F1",
+                      border:
+                        "1px solid #F0CACA",
+                      color:
+                        T.danger,
+                      borderRadius: 8,
+                      padding:
+                        "10px 12px",
+                      fontSize: 13,
+                    }}
+                  >
+                    {error}
+                  </div>
+                )}
+
                 <div
                   style={{
                     fontSize: 12,
                     color: T.inkFaint,
+                    lineHeight: 1.5,
                   }}
                 >
-                  {t("proof_optional_note")}
+                  Upload only proof related
+                  to your service experience.
+                  Do not upload Aadhaar,
+                  PAN, bank account numbers,
+                  passwords, OTPs or other
+                  sensitive information.
                 </div>
               </div>
             )}
 
             {/* STEP 5 */}
+
             {step === 5 && (
               <div
                 style={{
@@ -1063,14 +1389,17 @@ export function SubmitReviewFlow({
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "flex-start",
+                    alignItems:
+                      "flex-start",
                     gap: 10,
                   }}
                 >
                   <Lock
                     size={18}
                     color={T.navy}
-                    style={{ marginTop: 2 }}
+                    style={{
+                      marginTop: 2,
+                    }}
                   />
 
                   <div
@@ -1080,7 +1409,9 @@ export function SubmitReviewFlow({
                       lineHeight: 1.6,
                     }}
                   >
-                    {t("privacy_notice")}
+                    {t(
+                      "privacy_notice"
+                    )}
                   </div>
                 </div>
 
@@ -1099,7 +1430,9 @@ export function SubmitReviewFlow({
                       marginBottom: 10,
                     }}
                   >
-                    {t("privacy_indicator_question")}
+                    {t(
+                      "privacy_indicator_question"
+                    )}
                   </div>
 
                   <div
@@ -1109,29 +1442,77 @@ export function SubmitReviewFlow({
                     }}
                   >
                     <ToggleButton
-                      active={allowIndicator}
-                      onClick={() =>
-                        setAllowIndicator(true)
+                      active={
+                        allowIndicator
                       }
-                      icon={<ShieldCheck size={14} />}
-                      label={t("privacy_indicator_yes")}
+                      onClick={() =>
+                        setAllowIndicator(
+                          true
+                        )
+                      }
+                      icon={
+                        <ShieldCheck
+                          size={14}
+                        />
+                      }
+                      label={t(
+                        "privacy_indicator_yes"
+                      )}
                     />
 
                     <ToggleButton
-                      active={!allowIndicator}
-                      onClick={() =>
-                        setAllowIndicator(false)
+                      active={
+                        !allowIndicator
                       }
-                      icon={<EyeOff size={14} />}
-                      label={t("privacy_indicator_no")}
+                      onClick={() =>
+                        setAllowIndicator(
+                          false
+                        )
+                      }
+                      icon={
+                        <EyeOff
+                          size={14}
+                        />
+                      }
+                      label={t(
+                        "privacy_indicator_no"
+                      )}
                     />
                   </div>
                 </div>
 
+                {file && (
+                  <div
+                    style={{
+                      background:
+                        "#EEF8F2",
+                      border:
+                        "1px solid #CBE8D5",
+                      borderRadius: 10,
+                      padding:
+                        "10px 12px",
+                      fontSize: 13,
+                      color:
+                        T.verified,
+                    }}
+                  >
+                    ✓ Proof selected:{" "}
+                    {file.name}
+                  </div>
+                )}
+
                 {error && (
                   <div
                     style={{
-                      color: T.danger,
+                      background:
+                        "#FFF1F1",
+                      border:
+                        "1px solid #F0CACA",
+                      color:
+                        T.danger,
+                      borderRadius: 8,
+                      padding:
+                        "10px 12px",
                       fontSize: 13,
                     }}
                   >
@@ -1141,11 +1522,13 @@ export function SubmitReviewFlow({
               </div>
             )}
 
-            {/* FOOTER BUTTONS */}
+            {/* FOOTER */}
+
             <div
               style={{
                 display: "flex",
-                justifyContent: "space-between",
+                justifyContent:
+                  "space-between",
                 marginTop: 26,
               }}
             >
@@ -1155,7 +1538,13 @@ export function SubmitReviewFlow({
                     ? setStep(step - 1)
                     : onClose()
                 }
-                style={backBtn}
+                disabled={submitting}
+                style={{
+                  ...backBtn,
+                  opacity: submitting
+                    ? 0.5
+                    : 1,
+                }}
               >
                 <ChevronLeft size={15} />
 
@@ -1169,14 +1558,18 @@ export function SubmitReviewFlow({
                 onClick={goNext}
                 style={{
                   ...nextBtn,
-                  opacity: submitting ? 0.6 : 1,
+                  opacity: submitting
+                    ? 0.6
+                    : 1,
                 }}
               >
                 {submitting
-                  ? t("submitting")
+                  ? "Uploading..."
                   : step < 5
                   ? t("continue")
-                  : t("submit_review")}
+                  : t(
+                      "submit_review"
+                    )}
 
                 <ChevronRight size={15} />
               </button>
@@ -1204,8 +1597,12 @@ function StarIcon({
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill={filled ? T.gold : "none"}
-      stroke={filled ? T.gold : T.line}
+      fill={
+        filled ? T.gold : "none"
+      }
+      stroke={
+        filled ? T.gold : T.line
+      }
       strokeWidth={1.5}
     >
       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z" />
@@ -1235,7 +1632,8 @@ function ToggleButton({
         flex: 1,
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
+        justifyContent:
+          "center",
         gap: 6,
         padding: "10px 10px",
         minHeight: 42,
@@ -1244,16 +1642,21 @@ function ToggleButton({
         fontSize: 12.5,
         fontWeight: 600,
         border: `1.5px solid ${
-          active ? T.navy : T.line
+          active
+            ? T.navy
+            : T.line
         }`,
-        background: active ? T.navy : "#fff",
-        color: active ? "#fff" : T.inkSoft,
+        background: active
+          ? T.navy
+          : "#fff",
+        color: active
+          ? "#fff"
+          : T.inkSoft,
         transition:
           "all 0.18s ease",
       }}
     >
       {icon}
-
       {label}
     </button>
   );
@@ -1278,7 +1681,9 @@ function Field({
     <div>
       <div
         style={{
-          fontSize: compact ? 12.5 : 13.5,
+          fontSize: compact
+            ? 12.5
+            : 13.5,
           fontWeight: 600,
           color: T.ink,
           marginBottom: 6,
