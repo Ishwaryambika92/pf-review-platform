@@ -89,9 +89,8 @@ X_FRAME_OPTIONS = "DENY"
 
 SECURE_REFERRER_POLICY = "same-origin"
 
-
 # ---------------------------------------------------------
-# PRIVATE PROOF STORAGE
+# PRIVATE PROOF STORAGE - BACKBLAZE B2
 # ---------------------------------------------------------
 
 if os.environ.get(
@@ -115,8 +114,17 @@ if os.environ.get(
 
     AWS_S3_REGION_NAME = os.environ.get(
         "AWS_S3_REGION_NAME",
-        "ap-south-1",
+        "us-east-005",
     )
+
+    AWS_S3_ENDPOINT_URL = os.environ.get(
+        "AWS_S3_ENDPOINT_URL",
+        "https://s3.us-east-005.backblazeb2.com",
+    )
+
+    AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+    AWS_S3_ADDRESSING_STYLE = "virtual"
 
     AWS_DEFAULT_ACL = None
 

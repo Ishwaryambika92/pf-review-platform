@@ -123,7 +123,7 @@ SIMPLE_JWT = {
 }
 
 # Proof upload constraints
-PROOF_MAX_SIZE_BYTES = 8 * 1024 * 1024  # 8MB
+PROOF_MAX_SIZE_BYTES = 2 * 1024 * 1024
 PROOF_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "application/pdf"}
 
 LOGGING = {
