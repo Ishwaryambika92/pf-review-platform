@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
-admin.site.site_url = "http://localhost:5173/"
+admin.site.site_url = "https://pf-review-platform.pages.dev/"
 
 urlpatterns = [
     path("admin/", admin.site.urls),
