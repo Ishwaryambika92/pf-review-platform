@@ -42,30 +42,17 @@ DATABASES = {
 # ---------------------------------------------------------
 # CORS
 # ---------------------------------------------------------
-
 CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get(
-        "CORS_ALLOWED_ORIGINS",
-        "",
-    ).split(",")
-    if o.strip()
+    "https://pf-review-platform.pages.dev",
 ]
-
 
 # ---------------------------------------------------------
 # CSRF
 # ---------------------------------------------------------
 
 CSRF_TRUSTED_ORIGINS = [
-    o.strip()
-    for o in os.environ.get(
-        "CSRF_TRUSTED_ORIGINS",
-        "",
-    ).split(",")
-    if o.strip()
+    "https://pf-review-platform.pages.dev",
 ]
-
 
 # ---------------------------------------------------------
 # SECURITY
