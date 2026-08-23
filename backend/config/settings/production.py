@@ -124,7 +124,7 @@ if os.environ.get(
 
     AWS_S3_SIGNATURE_VERSION = "s3v4"
 
-    AWS_S3_ADDRESSING_STYLE = "virtual"
+    AWS_S3_ADDRESSING_STYLE = "path"
 
     AWS_DEFAULT_ACL = None
 
