@@ -3,6 +3,7 @@ import os
 import dj_database_url
 
 from .base import *  # noqa
+from corsheaders.defaults import default_headers
 
 
 DEBUG = False
@@ -42,8 +43,17 @@ DATABASES = {
 # ---------------------------------------------------------
 # CORS
 # ---------------------------------------------------------
+# ---------------------------------------------------------
+# CORS
+# ---------------------------------------------------------
+
 CORS_ALLOWED_ORIGINS = [
     "https://pf-review-platform.pages.dev",
+]
+
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    "x-anonymous-id",
 ]
 
 # ---------------------------------------------------------
