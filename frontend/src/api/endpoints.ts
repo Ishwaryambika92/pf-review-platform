@@ -322,7 +322,6 @@ export async function moderationQueue(
   );
 }
 
-
 export async function claimReview(
   reviewId: string
 ) {
@@ -333,7 +332,6 @@ export async function claimReview(
     }
   );
 }
-
 
 export async function decideReview(
   reviewId: string,
@@ -360,7 +358,8 @@ export async function decideReview(
 
 
 /* ============================================================
-   PROOF DOWNLOAD - MODERATOR ONLY
+   ORIGINAL PROOF DOWNLOAD
+   MODERATOR ONLY
 ============================================================ */
 
 export function proofDownloadUrl(
@@ -371,7 +370,34 @@ export function proofDownloadUrl(
 
 
 /* ============================================================
-   REDACTED PROOF PREVIEW - CUSTOMER
+   FETCH ORIGINAL PROOF
+   MODERATOR ONLY
+============================================================ */
+
+export async function fetchProofBlob(
+  reviewId: string
+): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}${proofDownloadUrl(reviewId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${getAccessToken()}`,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error("Unable to load original proof");
+  }
+
+  return res.blob();
+}
+
+
+/* ============================================================
+   REDACTED PROOF PREVIEW
+   CUSTOMER VISIBLE
 ============================================================ */
 
 export function proofPreviewUrl(
@@ -382,24 +408,91 @@ export function proofPreviewUrl(
 
 
 /* ============================================================
-   FETCH ORIGINAL PROOF - MODERATOR ONLY
+   FETCH REDACTED PROOF PREVIEW
+   CUSTOMER VISIBLE
 ============================================================ */
 
-export async function fetchProofBlob(
+export async function fetchProofPreviewBlob(
   reviewId: string
 ): Promise<Blob> {
+  const token = getAccessToken();
+
+  const headers: HeadersInit = {};
+
+  /*
+    If customer is logged in, send the token.
+    If customer is not logged in, the public endpoint
+    can still work without Authorization.
+  */
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const res = await fetch(
-    `${API_BASE}${proofDownloadUrl(reviewId)}`,
+    proofPreviewUrl(reviewId),
     {
-      headers: {
-        Authorization: `Bearer ${getAccessToken()}`,
-      },
+      method: "GET",
+      headers,
     }
   );
 
   if (!res.ok) {
-    throw new Error("Unable to load proof");
+    throw new Error(
+      "Unable to load verified proof preview"
+    );
   }
 
   return res.blob();
+}
+
+
+/* ============================================================
+   OPEN REDACTED PROOF PREVIEW
+   CUSTOMER VISIBLE
+============================================================ */
+
+export async function openProofPreview(
+  reviewId: string
+): Promise<void> {
+  /*
+    Open the new tab immediately so the browser
+    does not block it as a popup.
+  */
+  const previewWindow = window.open(
+    "",
+    "_blank"
+  );
+
+  try {
+    const blob =
+      await fetchProofPreviewBlob(reviewId);
+
+    const blobUrl =
+      URL.createObjectURL(blob);
+
+    if (previewWindow) {
+      previewWindow.location.href =
+        blobUrl;
+    } else {
+      /*
+        Fallback if browser blocked the new tab.
+      */
+      window.location.href = blobUrl;
+    }
+
+    /*
+      Give the browser enough time to load the
+      blob before releasing the object URL.
+    */
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 60000);
+
+  } catch (error) {
+    if (previewWindow) {
+      previewWindow.close();
+    }
+
+    throw error;
+  }
 }
