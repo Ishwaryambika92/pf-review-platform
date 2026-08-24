@@ -134,36 +134,22 @@ def proof_upload_path(instance, filename):
     return f"proofs/{instance.review.id}/{uuid.uuid4()}.{ext}"
 
 
+def proof_preview_upload_path(instance, filename):
+    ext = filename.split(".")[-1].lower()
+    return f"proof-previews/{instance.review.id}/{uuid.uuid4()}.{ext}"
+
+
 class ReviewProof(models.Model):
-    """
-    The uploaded evidence file.
-
-    Original proof:
-    - Private
-    - Stored in private B2 storage
-    - Only accessible by staff/moderators
-
-    Preview proof:
-    - Redacted/safe copy
-    - Can later be shown publicly after verification
-    """
-
     review = models.OneToOneField(
         Review,
         on_delete=models.CASCADE,
         related_name="proof",
     )
 
-    # ORIGINAL PROOF - PRIVATE
+    # ORIGINAL CUSTOMER UPLOAD
+    # Private - ADMIN/MODERATOR ONLY
     file = models.FileField(
         upload_to=proof_upload_path,
-    )
-
-    # REDACTED PREVIEW - SAFE FOR PUBLIC VIEW
-    preview_file = models.FileField(
-        upload_to="proof-previews/",
-        null=True,
-        blank=True,
     )
 
     original_filename = models.CharField(
@@ -180,9 +166,34 @@ class ReviewProof(models.Model):
         auto_now_add=True,
     )
 
+    # REDACTED CUSTOMER-SAFE COPY
+    # Still stored in private B2.
+    # Customer accesses it only through a permission-checked API.
+    preview_file = models.FileField(
+        upload_to=proof_preview_upload_path,
+        null=True,
+        blank=True,
+    )
+
+    preview_filename = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    preview_content_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    preview_uploaded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
     def __str__(self):
         return f"Proof for {self.review.reference_id}"
-
 
 class ReviewVerification(models.Model):
     class Decision(models.TextChoices):
