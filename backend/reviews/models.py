@@ -136,17 +136,49 @@ def proof_upload_path(instance, filename):
 
 class ReviewProof(models.Model):
     """
-    The uploaded evidence file. Stored under MEDIA_ROOT (private,
-    non-public-serving — see settings) or an S3 private bucket in
-    production. Never linked publicly; only accessible via
-    ProofDownloadView, which checks ownership/staff status per request.
+    The uploaded evidence file.
+
+    Original proof:
+    - Private
+    - Stored in private B2 storage
+    - Only accessible by staff/moderators
+
+    Preview proof:
+    - Redacted/safe copy
+    - Can later be shown publicly after verification
     """
-    review = models.OneToOneField(Review, on_delete=models.CASCADE, related_name="proof")
-    file = models.FileField(upload_to=proof_upload_path)
-    original_filename = models.CharField(max_length=255)
-    content_type = models.CharField(max_length=100)
+
+    review = models.OneToOneField(
+        Review,
+        on_delete=models.CASCADE,
+        related_name="proof",
+    )
+
+    # ORIGINAL PROOF - PRIVATE
+    file = models.FileField(
+        upload_to=proof_upload_path,
+    )
+
+    # REDACTED PREVIEW - SAFE FOR PUBLIC VIEW
+    preview_file = models.FileField(
+        upload_to="proof-previews/",
+        null=True,
+        blank=True,
+    )
+
+    original_filename = models.CharField(
+        max_length=255,
+    )
+
+    content_type = models.CharField(
+        max_length=100,
+    )
+
     size_bytes = models.PositiveIntegerField()
-    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    uploaded_at = models.DateTimeField(
+        auto_now_add=True,
+    )
 
     def __str__(self):
         return f"Proof for {self.review.reference_id}"
