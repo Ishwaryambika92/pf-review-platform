@@ -7,8 +7,8 @@ from .views import (
     ProofDownloadView,
     ProofUploadView,
     ProofPreviewUploadView,
-    ReviewViewSet,
     ProofPreviewDownloadView,
+    ReviewViewSet,
 )
 
 
@@ -18,12 +18,14 @@ from .views import (
 
 router = DefaultRouter()
 
+
 # Helpful button
 router.register(
     "helpful",
     HelpfulVoteViewSet,
     basename="helpfulvote",
 )
+
 
 # Reviews
 router.register(
@@ -38,35 +40,46 @@ router.register(
 # ============================================================
 
 urlpatterns = [
+
+    # --------------------------------------------------------
     # Logged-in user's reviews
+    # --------------------------------------------------------
     path(
         "mine/",
         MyReviewsView.as_view(),
         name="my-reviews",
     ),
 
-    # Upload original proof for a pending review
+    # --------------------------------------------------------
+    # Customer uploads ORIGINAL proof
+    # --------------------------------------------------------
     path(
         "<uuid:review_id>/proof/upload/",
         ProofUploadView.as_view(),
         name="proof-upload",
     ),
 
-    # Staff/moderator proof download
+    # --------------------------------------------------------
+    # Moderator ONLY - ORIGINAL proof
+    # --------------------------------------------------------
     path(
         "<uuid:review_id>/proof/download/",
         ProofDownloadView.as_view(),
         name="proof-download",
     ),
 
-    # Staff/moderator redacted proof preview upload
+    # --------------------------------------------------------
+    # Moderator uploads REDACTED proof
+    # --------------------------------------------------------
     path(
         "<uuid:review_id>/proof/preview/upload/",
         ProofPreviewUploadView.as_view(),
         name="proof-preview-upload",
     ),
 
-        # CUSTOMER - redacted copy only
+    # --------------------------------------------------------
+    # Customer - REDACTED proof only
+    # --------------------------------------------------------
     path(
         "<uuid:review_id>/proof/preview/",
         ProofPreviewDownloadView.as_view(),
