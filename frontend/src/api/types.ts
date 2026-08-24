@@ -39,6 +39,7 @@ export interface ReviewPublic {
   language: "en" | "te" | "mixed";
   is_verified: boolean;
   proof_verified: boolean;
+  proof_preview_available: boolean;
   rating: Rating;
   helpful_count: number;
   created_at: string;
