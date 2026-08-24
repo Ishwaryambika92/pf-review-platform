@@ -17,7 +17,9 @@ import type {
   ServiceSummary,
 } from "./types";
 
-/* ---------- Auth ---------- */
+/* ============================================================
+   AUTH
+============================================================ */
 
 export async function register(
   username: string,
@@ -65,7 +67,9 @@ export async function me(): Promise<MyUser> {
 }
 
 
-/* ---------- Services ---------- */
+/* ============================================================
+   SERVICES
+============================================================ */
 
 export async function listServices(
   params: {
@@ -103,7 +107,9 @@ export async function listCategories() {
 }
 
 
-/* ---------- Reviews (public) ---------- */
+/* ============================================================
+   REVIEWS - PUBLIC
+============================================================ */
 
 export async function listReviews(
   params: {
@@ -143,7 +149,9 @@ export async function getReview(id: string) {
 }
 
 
-/* ---------- Reviews (authenticated write) ---------- */
+/* ============================================================
+   REVIEWS - AUTHENTICATED WRITE
+============================================================ */
 
 export interface NewReviewPayload {
   service: string;
@@ -172,7 +180,6 @@ export interface NewReviewPayload {
 export async function submitReview(
   payload: NewReviewPayload
 ) {
-  // The backend forces every new review to "pending".
   return apiRequest<ReviewPublic>(
     "/reviews/",
     {
@@ -181,6 +188,12 @@ export async function submitReview(
     }
   );
 }
+
+
+/* ============================================================
+   ORIGINAL PROOF UPLOAD
+   Customer uploads original proof
+============================================================ */
 
 export async function uploadProof(
   reviewId: string,
@@ -200,6 +213,35 @@ export async function uploadProof(
   );
 }
 
+
+/* ============================================================
+   REDACTED PROOF PREVIEW UPLOAD
+   Moderator uploads safe/redacted copy
+============================================================ */
+
+export async function uploadProofPreview(
+  reviewId: string,
+  file: File
+) {
+  const form = new FormData();
+
+  form.append("file", file);
+
+  return apiRequest(
+    `/reviews/${reviewId}/proof/preview/upload/`,
+    {
+      method: "POST",
+      body: form,
+      isForm: true,
+    }
+  );
+}
+
+
+/* ============================================================
+   MY REVIEWS
+============================================================ */
+
 export async function myReviews() {
   const data =
     await apiRequest<Paginated<ReviewPublic>>(
@@ -210,7 +252,9 @@ export async function myReviews() {
 }
 
 
-/* ---------- Helpful ---------- */
+/* ============================================================
+   HELPFUL
+============================================================ */
 
 export async function markHelpful(
   reviewId: string
@@ -227,7 +271,9 @@ export async function markHelpful(
 }
 
 
-/* ---------- Notifications ---------- */
+/* ============================================================
+   NOTIFICATIONS
+============================================================ */
 
 export async function listNotifications() {
   return apiRequest<Paginated<AppNotification>>(
@@ -256,7 +302,9 @@ export async function deleteNotification(
 }
 
 
-/* ---------- Moderation ---------- */
+/* ============================================================
+   MODERATION
+============================================================ */
 
 export async function moderationQueue(
   params: {
@@ -274,6 +322,7 @@ export async function moderationQueue(
   );
 }
 
+
 export async function claimReview(
   reviewId: string
 ) {
@@ -284,6 +333,7 @@ export async function claimReview(
     }
   );
 }
+
 
 export async function decideReview(
   reviewId: string,
@@ -309,13 +359,16 @@ export async function decideReview(
 }
 
 
-/* ---------- Proof ---------- */
+/* ============================================================
+   PROOF DOWNLOAD - MODERATOR ONLY
+============================================================ */
 
 export function proofDownloadUrl(
   reviewId: string
 ) {
   return `/reviews/${reviewId}/proof/download/`;
 }
+
 
 export async function fetchProofBlob(
   reviewId: string
