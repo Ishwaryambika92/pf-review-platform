@@ -3,6 +3,7 @@ import logging
 from django.conf import settings
 from django.db.models import Q
 from django.http import FileResponse, Http404
+from django.utils import timezone
 
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -44,7 +45,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
         Public users can see only verified/published reviews.
 
     Staff/moderators:
-        Can see all reviews, including pending and rejected reviews.
+        Can see all reviews, including pending and rejected.
 
     POST:
         Anyone can submit a review without logging in.
@@ -55,7 +56,9 @@ class ReviewViewSet(viewsets.ModelViewSet):
     Report functionality has been completely removed.
     """
 
-    permission_classes = [ReviewAccessPermission]
+    permission_classes = [
+        ReviewAccessPermission
+    ]
 
     filterset_fields = [
         "service",
@@ -74,12 +77,12 @@ class ReviewViewSet(viewsets.ModelViewSet):
     ]
 
     throttle_classes = [
-        ScopedRateThrottle,
+        ScopedRateThrottle
     ]
 
     def get_throttles(self):
         """
-        Apply the review-create throttle only to POST requests.
+        Apply review-create throttle only to POST requests.
         """
 
         self.throttle_scope = (
@@ -164,7 +167,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
         """
         Staff/moderators can delete reviews.
 
-        Every deletion is recorded in the audit log.
+        Every deletion is recorded in audit log.
         """
 
         AuditLog.record(
@@ -183,10 +186,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
 
 class MyReviewsView(generics.ListAPIView):
     """
-    Kept for authenticated users/staff testing.
-
-    Normal public users do not need this because review submission
-    does not require an account.
+    Authenticated user's own reviews.
     """
 
     serializer_class = ReviewDetailSerializer
@@ -211,16 +211,21 @@ class MyReviewsView(generics.ListAPIView):
 
 
 # ============================================================
-# PROOF UPLOAD
+# ORIGINAL PROOF UPLOAD
 # ============================================================
 
 class ProofUploadView(APIView):
     """
-    Upload proof for a pending review.
+    Customer uploads the ORIGINAL proof.
 
     Login is not required.
 
     The review UUID acts as the capability token.
+
+    IMPORTANT:
+        This original file is private.
+        It must never be exposed through the
+        public review serializer.
     """
 
     permission_classes = [
@@ -228,6 +233,10 @@ class ProofUploadView(APIView):
     ]
 
     def post(self, request, review_id):
+
+        # ----------------------------------------------------
+        # FIND REVIEW
+        # ----------------------------------------------------
 
         review = (
             Review.objects
@@ -244,17 +253,18 @@ class ProofUploadView(APIView):
 
         if review.status != ReviewStatus.PENDING:
             raise ValidationError(
-                "Proof can only be attached while the review "
-                "is pending verification."
+                "Proof can only be attached while "
+                "the review is pending verification."
             )
 
         # ----------------------------------------------------
-        # ONLY ONE PROOF
+        # ONLY ONE ORIGINAL PROOF
         # ----------------------------------------------------
 
         if hasattr(review, "proof"):
             raise ValidationError(
-                "Proof has already been uploaded for this review."
+                "Proof has already been uploaded "
+                "for this review."
             )
 
         # ----------------------------------------------------
@@ -282,7 +292,10 @@ class ProofUploadView(APIView):
         # FILE TYPE
         # ----------------------------------------------------
 
-        if f.content_type not in settings.PROOF_ALLOWED_CONTENT_TYPES:
+        if (
+            f.content_type
+            not in settings.PROOF_ALLOWED_CONTENT_TYPES
+        ):
             raise ValidationError(
                 "Only JPG, PNG or PDF files are accepted."
             )
@@ -292,9 +305,12 @@ class ProofUploadView(APIView):
         # ----------------------------------------------------
 
         logger.warning(
-            "PROOF STORAGE CONFIG: backend=%s bucket=%s "
-            "region=%s endpoint=%s addressing=%s",
-            settings.STORAGES.get("default", {}).get("BACKEND"),
+            "PROOF STORAGE CONFIG: backend=%s "
+            "bucket=%s region=%s endpoint=%s "
+            "addressing=%s",
+            settings.STORAGES
+            .get("default", {})
+            .get("BACKEND"),
             getattr(
                 settings,
                 "AWS_STORAGE_BUCKET_NAME",
@@ -318,7 +334,7 @@ class ProofUploadView(APIView):
         )
 
         # ----------------------------------------------------
-        # CREATE PROOF
+        # CREATE ORIGINAL PROOF
         # ----------------------------------------------------
 
         proof = ReviewProof.objects.create(
@@ -346,10 +362,16 @@ class ProofUploadView(APIView):
             },
         )
 
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
+
         return Response(
             {
                 "detail": "Proof uploaded.",
-                "original_filename": proof.original_filename,
+                "original_filename": (
+                    proof.original_filename
+                ),
                 "size_bytes": proof.size_bytes,
             },
             status=status.HTTP_201_CREATED,
@@ -357,14 +379,15 @@ class ProofUploadView(APIView):
 
 
 # ============================================================
-# PROOF DOWNLOAD
+# ORIGINAL PROOF DOWNLOAD
+# ADMIN / MODERATOR ONLY
 # ============================================================
 
 class ProofDownloadView(APIView):
     """
-    Only authenticated staff/moderators can download proof.
+    Admin/moderator can view the ORIGINAL proof.
 
-    Original proof files are never publicly exposed.
+    Customer cannot access this endpoint.
     """
 
     permission_classes = [
@@ -372,51 +395,6 @@ class ProofDownloadView(APIView):
     ]
 
     def get(self, request, review_id):
-
-        review = (
-            Review.objects
-            .select_related("proof")
-            .filter(id=review_id)
-            .first()
-        )
-
-        if not review or not hasattr(review, "proof"):
-            raise Http404
-
-
-
-
-    # ============================================================
-# REDACTED PROOF PREVIEW UPLOAD
-# ============================================================
-
-class ProofPreviewUploadView(APIView):
-    """
-    Staff/moderator uploads a redacted/safe copy of the original proof.
-
-    The original proof remains private.
-    The preview can later be shown publicly after verification.
-    """
-
-    permission_classes = [
-        permissions.IsAuthenticated,
-    ]
-
-    def post(self, request, review_id):
-
-        # ----------------------------------------------------
-        # STAFF / MODERATOR ONLY
-        # ----------------------------------------------------
-
-        is_staff = (
-            request.user.is_staff
-            or request.user.is_moderator
-        )
-
-        if not is_staff:
-            raise PermissionDenied(
-                "Only moderators can upload a proof preview."
-            )
 
         # ----------------------------------------------------
         # FIND REVIEW
@@ -433,91 +411,6 @@ class ProofPreviewUploadView(APIView):
             raise Http404
 
         # ----------------------------------------------------
-        # ORIGINAL PROOF MUST EXIST
-        # ----------------------------------------------------
-
-        if not hasattr(review, "proof"):
-            raise ValidationError(
-                "This review does not have an original proof."
-            )
-
-        proof = review.proof
-
-        # ----------------------------------------------------
-        # GET REDACTED PREVIEW FILE
-        # ----------------------------------------------------
-
-        preview = request.FILES.get("preview")
-
-        if not preview:
-            raise ValidationError(
-                "Please upload a redacted preview file."
-            )
-
-        # ----------------------------------------------------
-        # SIZE CHECK
-        # ----------------------------------------------------
-
-        if preview.size > settings.PROOF_MAX_SIZE_BYTES:
-            raise ValidationError(
-                "Preview file exceeds the maximum allowed size."
-            )
-
-        # ----------------------------------------------------
-        # TYPE CHECK
-        # ----------------------------------------------------
-
-        allowed_types = getattr(
-            settings,
-            "PROOF_ALLOWED_CONTENT_TYPES",
-            [
-                "image/jpeg",
-                "image/png",
-                "application/pdf",
-            ],
-        )
-
-        if preview.content_type not in allowed_types:
-            raise ValidationError(
-                "Only JPG, PNG or PDF preview files are accepted."
-            )
-
-        # ----------------------------------------------------
-        # SAVE REDACTED PREVIEW
-        # ----------------------------------------------------
-
-        proof.preview_file = preview
-        proof.save(
-            update_fields=["preview_file"]
-        )
-
-        # ----------------------------------------------------
-        # AUDIT LOG
-        # ----------------------------------------------------
-
-        AuditLog.record(
-            actor=request.user,
-            action="proof_preview_uploaded",
-            target=review,
-            meta={
-                "filename": preview.name,
-            },
-        )
-
-        return Response(
-            {
-                "detail": "Redacted proof preview uploaded.",
-            },
-            status=status.HTTP_200_OK,
-        )
-
-
-
-
-
-        
-
-        # ----------------------------------------------------
         # STAFF / MODERATOR ONLY
         # ----------------------------------------------------
 
@@ -532,6 +425,18 @@ class ProofPreviewUploadView(APIView):
             )
 
         # ----------------------------------------------------
+        # PROOF MUST EXIST
+        # ----------------------------------------------------
+
+        if not hasattr(review, "proof"):
+            raise Http404
+
+        proof = review.proof
+
+        if not proof.file:
+            raise Http404
+
+        # ----------------------------------------------------
         # AUDIT LOG
         # ----------------------------------------------------
 
@@ -543,15 +448,335 @@ class ProofPreviewUploadView(APIView):
         )
 
         # ----------------------------------------------------
-        # RETURN FILE
+        # RETURN ORIGINAL PROOF
         # ----------------------------------------------------
-
-        proof = review.proof
 
         return FileResponse(
             proof.file.open("rb"),
-            content_type=proof.content_type,
-            filename=proof.original_filename,
+            content_type=(
+                proof.content_type
+                or "application/octet-stream"
+            ),
+            filename=(
+                proof.original_filename
+                or "proof"
+            ),
+        )
+
+
+# ============================================================
+# REDACTED PROOF PREVIEW UPLOAD
+# ADMIN / MODERATOR ONLY
+# ============================================================
+
+class ProofPreviewUploadView(APIView):
+    """
+    Admin/moderator uploads the REDACTED copy.
+
+    Original:
+        proof.file
+
+    Redacted:
+        proof.preview_file
+
+    The redacted file is also stored privately.
+    Customers access it through the dedicated
+    preview endpoint below.
+    """
+
+    permission_classes = [
+        permissions.IsAuthenticated,
+    ]
+
+    def post(self, request, review_id):
+
+        # ----------------------------------------------------
+        # FIND REVIEW
+        # ----------------------------------------------------
+
+        review = (
+            Review.objects
+            .select_related("proof")
+            .filter(id=review_id)
+            .first()
+        )
+
+        if not review:
+            raise Http404
+
+        # ----------------------------------------------------
+        # STAFF / MODERATOR ONLY
+        # ----------------------------------------------------
+
+        is_staff = (
+            request.user.is_staff
+            or request.user.is_moderator
+        )
+
+        if not is_staff:
+            raise PermissionDenied(
+                "Only staff/moderators can upload "
+                "a redacted proof preview."
+            )
+
+        # ----------------------------------------------------
+        # ORIGINAL PROOF MUST EXIST
+        # ----------------------------------------------------
+
+        if not hasattr(review, "proof"):
+            raise ValidationError(
+                "Original proof has not been uploaded."
+            )
+
+        proof = review.proof
+
+        # ----------------------------------------------------
+        # FILE REQUIRED
+        # ----------------------------------------------------
+
+        f = request.FILES.get("file")
+
+        if not f:
+            raise ValidationError(
+                "No redacted preview file provided."
+            )
+
+        # ----------------------------------------------------
+        # FILE SIZE
+        # ----------------------------------------------------
+
+        if f.size > settings.PROOF_MAX_SIZE_BYTES:
+            raise ValidationError(
+                f"File exceeds the "
+                f"{settings.PROOF_MAX_SIZE_BYTES // (1024 * 1024)}MB limit."
+            )
+
+        # ----------------------------------------------------
+        # FILE TYPE
+        # ----------------------------------------------------
+
+        if (
+            f.content_type
+            not in settings.PROOF_ALLOWED_CONTENT_TYPES
+        ):
+            raise ValidationError(
+                "Only JPG, PNG or PDF files are accepted."
+            )
+
+        # ----------------------------------------------------
+        # DELETE OLD PREVIEW
+        # ----------------------------------------------------
+
+        if proof.preview_file:
+            try:
+                proof.preview_file.delete(
+                    save=False
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to delete old proof preview."
+                )
+
+        # ----------------------------------------------------
+        # SAVE REDACTED PREVIEW
+        # ----------------------------------------------------
+
+        proof.preview_file = f
+
+        # These fields exist only if they are present
+        # in your model.
+
+        if hasattr(
+            proof,
+            "preview_filename",
+        ):
+            proof.preview_filename = f.name
+
+        if hasattr(
+            proof,
+            "preview_content_type",
+        ):
+            proof.preview_content_type = (
+                f.content_type
+            )
+
+        if hasattr(
+            proof,
+            "preview_uploaded_at",
+        ):
+            proof.preview_uploaded_at = (
+                timezone.now()
+            )
+
+        # ----------------------------------------------------
+        # UPDATE ONLY EXISTING FIELDS
+        # ----------------------------------------------------
+
+        update_fields = [
+            "preview_file",
+        ]
+
+        if hasattr(
+            proof,
+            "preview_filename",
+        ):
+            update_fields.append(
+                "preview_filename"
+            )
+
+        if hasattr(
+            proof,
+            "preview_content_type",
+        ):
+            update_fields.append(
+                "preview_content_type"
+            )
+
+        if hasattr(
+            proof,
+            "preview_uploaded_at",
+        ):
+            update_fields.append(
+                "preview_uploaded_at"
+            )
+
+        proof.save(
+            update_fields=update_fields
+        )
+
+        # ----------------------------------------------------
+        # AUDIT LOG
+        # ----------------------------------------------------
+
+        AuditLog.record(
+            actor=request.user,
+            action="proof_preview_uploaded",
+            target=review,
+            meta={
+                "filename": f.name,
+            },
+        )
+
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
+
+        return Response(
+            {
+                "detail": (
+                    "Redacted proof preview uploaded."
+                ),
+                "filename": f.name,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ============================================================
+# REDACTED PROOF PREVIEW DOWNLOAD
+# CUSTOMER / PUBLIC
+# ============================================================
+
+class ProofPreviewDownloadView(APIView):
+    """
+    Customer-facing REDACTED proof.
+
+    IMPORTANT:
+        This endpoint NEVER returns proof.file.
+
+        It returns ONLY proof.preview_file.
+
+    The preview becomes available only after the
+    review becomes public.
+    """
+
+    permission_classes = [
+        permissions.AllowAny,
+    ]
+
+    def get(self, request, review_id):
+
+        # ----------------------------------------------------
+        # FIND REVIEW
+        # ----------------------------------------------------
+
+        review = (
+            Review.objects
+            .select_related("proof")
+            .filter(id=review_id)
+            .first()
+        )
+
+        if not review:
+            raise Http404
+
+        # ----------------------------------------------------
+        # ONLY PUBLIC REVIEWS
+        # ----------------------------------------------------
+
+        if review.status not in (
+            ReviewStatus.VERIFIED,
+            ReviewStatus.PUBLISHED_UNVERIFIED,
+        ):
+            raise PermissionDenied(
+                "Proof preview is not available "
+                "for this review."
+            )
+
+        # ----------------------------------------------------
+        # PROOF MUST EXIST
+        # ----------------------------------------------------
+
+        if not hasattr(review, "proof"):
+            raise Http404
+
+        proof = review.proof
+
+        # ----------------------------------------------------
+        # REDACTED PREVIEW MUST EXIST
+        # ----------------------------------------------------
+
+        if not proof.preview_file:
+            raise Http404
+
+        # ----------------------------------------------------
+        # CONTENT TYPE
+        # ----------------------------------------------------
+
+        content_type = getattr(
+            proof,
+            "preview_content_type",
+            None,
+        )
+
+        if not content_type:
+            content_type = (
+                "application/octet-stream"
+            )
+
+        # ----------------------------------------------------
+        # FILENAME
+        # ----------------------------------------------------
+
+        filename = getattr(
+            proof,
+            "preview_filename",
+            None,
+        )
+
+        if not filename:
+            filename = (
+                "verified-proof-preview"
+            )
+
+        # ----------------------------------------------------
+        # RETURN ONLY REDACTED PROOF
+        # ----------------------------------------------------
+
+        return FileResponse(
+            proof.preview_file.open("rb"),
+            content_type=content_type,
+            filename=filename,
         )
 
 
@@ -559,7 +784,9 @@ class ProofPreviewUploadView(APIView):
 # HELPFUL VOTES
 # ============================================================
 
-class HelpfulVoteViewSet(viewsets.ModelViewSet):
+class HelpfulVoteViewSet(
+    viewsets.ModelViewSet
+):
     """
     Anyone can mark a review as helpful.
 
@@ -593,8 +820,8 @@ class HelpfulVoteViewSet(viewsets.ModelViewSet):
         """
         Logged-in users can access their own votes.
 
-        Anonymous users are handled directly using X-Anonymous-Id
-        inside the serializer/destroy method.
+        Anonymous users are handled directly using
+        X-Anonymous-Id inside serializer/destroy.
         """
 
         if self.request.user.is_authenticated:
@@ -604,12 +831,19 @@ class HelpfulVoteViewSet(viewsets.ModelViewSet):
 
         return HelpfulVote.objects.none()
 
-    def destroy(self, request, *args, **kwargs):
+    def destroy(
+        self,
+        request,
+        *args,
+        **kwargs,
+    ):
 
         review_id = kwargs.get("pk")
 
         anon_id = (
-            request.headers.get("X-Anonymous-Id")
+            request.headers.get(
+                "X-Anonymous-Id"
+            )
             or ""
         ).strip()[:64]
 

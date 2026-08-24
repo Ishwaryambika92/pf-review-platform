@@ -370,6 +370,21 @@ export function proofDownloadUrl(
 }
 
 
+/* ============================================================
+   REDACTED PROOF PREVIEW - CUSTOMER
+============================================================ */
+
+export function proofPreviewUrl(
+  reviewId: string
+) {
+  return `${API_BASE}/reviews/${reviewId}/proof/preview/`;
+}
+
+
+/* ============================================================
+   FETCH ORIGINAL PROOF - MODERATOR ONLY
+============================================================ */
+
 export async function fetchProofBlob(
   reviewId: string
 ): Promise<Blob> {

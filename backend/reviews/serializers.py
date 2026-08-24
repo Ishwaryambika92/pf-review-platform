@@ -65,7 +65,6 @@ class ReviewProofMetaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-
 # ============================================================
 # PUBLIC REVIEW LIST
 # ============================================================
@@ -74,13 +73,30 @@ class ReviewListSerializer(serializers.ModelSerializer):
     """
     Public-facing review serializer.
 
-    Used on service pages, search results and customer experiences.
+    Original proof is NEVER exposed.
+
+    Only tells the frontend whether a redacted
+    proof preview is available.
     """
 
     rating = ReviewRatingSerializer(read_only=True)
-    display_name = serializers.CharField(read_only=True)
-    is_verified = serializers.BooleanField(read_only=True)
-    proof_verified = serializers.BooleanField(read_only=True)
+
+    display_name = serializers.CharField(
+        read_only=True
+    )
+
+    is_verified = serializers.BooleanField(
+        read_only=True
+    )
+
+    proof_verified = serializers.BooleanField(
+        read_only=True
+    )
+
+    proof_preview_available = (
+        serializers.SerializerMethodField()
+    )
+
     helpful_count = serializers.SerializerMethodField()
 
     service_name = serializers.CharField(
@@ -106,6 +122,7 @@ class ReviewListSerializer(serializers.ModelSerializer):
             "language",
             "is_verified",
             "proof_verified",
+            "proof_preview_available",
             "rating",
             "helpful_count",
             "created_at",
@@ -113,10 +130,26 @@ class ReviewListSerializer(serializers.ModelSerializer):
 
         read_only_fields = fields
 
+    def get_proof_preview_available(self, obj):
+        proof = getattr(
+            obj,
+            "proof",
+            None,
+        )
+
+        if not proof:
+            return False
+
+        if not proof.preview_file:
+            return False
+
+        return obj.status in (
+            "verified",
+            "published_unverified",
+        )
+
     def get_helpful_count(self, obj):
         return obj.helpful_votes.count()
-
-
 # ============================================================
 # CREATE REVIEW
 # ============================================================

@@ -8,6 +8,7 @@ from .views import (
     ProofUploadView,
     ProofPreviewUploadView,
     ReviewViewSet,
+    ProofPreviewDownloadView,
 )
 
 
@@ -64,4 +65,12 @@ urlpatterns = [
         ProofPreviewUploadView.as_view(),
         name="proof-preview-upload",
     ),
+
+        # CUSTOMER - redacted copy only
+    path(
+        "<uuid:review_id>/proof/preview/",
+        ProofPreviewDownloadView.as_view(),
+        name="proof-preview-download",
+    ),
+
 ] + router.urls
