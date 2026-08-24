@@ -8,7 +8,11 @@ import {
 } from "lucide-react";
 
 import { T } from "../design/tokens";
-import { Stars, VerifiedSeal, Badge } from "./Primitives";
+import {
+  Stars,
+  VerifiedSeal,
+  Badge,
+} from "./Primitives";
 import * as api from "../api/endpoints";
 import type { ReviewPublic } from "../api/types";
 import { useLanguage } from "../i18n/LanguageContext";
@@ -27,6 +31,9 @@ export function ReviewCard({
   const [voted, setVoted] = useState(false);
 
   const [voting, setVoting] = useState(false);
+
+  const [openingProof, setOpeningProof] =
+    useState(false);
 
   /* ============================================================
      HELPFUL VOTE
@@ -55,12 +62,59 @@ export function ReviewCard({
 
   /* ============================================================
      CUSTOMER CAN VIEW REDACTED PROOF
+     
+     IMPORTANT:
+     Customer can see the proof button ONLY when:
+       1. Review is verified
+       2. Proof is verified
+       3. Redacted preview actually exists
+     
+     Customer NEVER uses the original proof endpoint.
   ============================================================ */
 
   const canViewProof =
-    r.is_verified &&
-    r.proof_verified &&
-    r.proof_preview_available;
+    r.is_verified === true &&
+    r.proof_verified === true &&
+    r.proof_preview_available === true;
+
+  /* ============================================================
+     OPEN REDACTED PROOF
+     
+     Uses openProofPreview() instead of href.
+     
+     This:
+       - opens a new tab
+       - fetches the REDACTED proof
+       - creates a temporary Blob URL
+       - displays the PDF in browser
+       - does NOT call original proof download endpoint
+  ============================================================ */
+
+  const onViewProof = async () => {
+    if (
+      !canViewProof ||
+      openingProof
+    ) {
+      return;
+    }
+
+    setOpeningProof(true);
+
+    try {
+      await api.openProofPreview(r.id);
+    } catch (error) {
+      console.error(
+        "Unable to open verified proof:",
+        error
+      );
+
+      alert(
+        "Unable to open the verified proof. Please try again."
+      );
+    } finally {
+      setOpeningProof(false);
+    }
+  };
 
   return (
     <div
@@ -87,7 +141,9 @@ export function ReviewCard({
         }}
       >
         <Stars
-          value={r.rating?.overall ?? 0}
+          value={
+            r.rating?.overall ?? 0
+          }
         />
 
         {r.is_verified ? (
@@ -131,6 +187,8 @@ export function ReviewCard({
           flexWrap: "wrap",
         }}
       >
+        {/* USER */}
+
         <span
           style={{
             display: "flex",
@@ -147,11 +205,15 @@ export function ReviewCard({
 
         <span>·</span>
 
+        {/* SERVICE */}
+
         <span>
           {r.service_name}
         </span>
 
         <span>·</span>
+
+        {/* DATE */}
 
         <span
           style={{
@@ -205,7 +267,9 @@ export function ReviewCard({
               marginTop: 2,
             }}
           >
-            {/* Proof Verified */}
+            {/* ==================================================
+               PROOF VERIFIED
+            ================================================== */}
 
             <div
               style={{
@@ -223,14 +287,26 @@ export function ReviewCard({
             </div>
 
             {/* ==================================================
-               VIEW REDACTED PROOF
+               VIEW VERIFIED PROOF
+               
+               IMPORTANT:
+               This is a BUTTON, NOT an <a>.
+               
+               Therefore it does not directly navigate to:
+                 /proof/preview/
+               
+               Instead it calls:
+                 api.openProofPreview(r.id)
+               
+               which fetches the redacted proof and opens
+               the Blob in a new browser tab.
             ================================================== */}
 
             {canViewProof && (
-              <a
-                href={api.proofPreviewUrl(r.id)}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={onViewProof}
+                disabled={openingProof}
                 aria-label="View verified proof"
                 style={{
                   display: "inline-flex",
@@ -241,16 +317,23 @@ export function ReviewCard({
                   border: `1px solid ${T.line}`,
                   background: T.paper,
                   color: T.navy,
-                  textDecoration: "none",
                   fontSize: 12.5,
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: openingProof
+                    ? "default"
+                    : "pointer",
+                  fontFamily: T.bodyFont,
+                  opacity: openingProof
+                    ? 0.7
+                    : 1,
                 }}
               >
                 <Eye size={14} />
 
-                View Verified Proof
-              </a>
+                {openingProof
+                  ? "Opening..."
+                  : "View Verified Proof"}
+              </button>
             )}
           </div>
         )}

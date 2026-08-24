@@ -192,7 +192,7 @@ export async function submitReview(
 
 /* ============================================================
    ORIGINAL PROOF UPLOAD
-   Customer uploads original proof
+   CUSTOMER UPLOADS ORIGINAL PROOF
 ============================================================ */
 
 export async function uploadProof(
@@ -216,7 +216,7 @@ export async function uploadProof(
 
 /* ============================================================
    REDACTED PROOF PREVIEW UPLOAD
-   Moderator uploads safe/redacted copy
+   MODERATOR UPLOADS SAFE / REDACTED COPY
 ============================================================ */
 
 export async function uploadProofPreview(
@@ -358,7 +358,7 @@ export async function decideReview(
 
 
 /* ============================================================
-   ORIGINAL PROOF DOWNLOAD
+   ORIGINAL PROOF
    MODERATOR ONLY
 ============================================================ */
 
@@ -372,23 +372,31 @@ export function proofDownloadUrl(
 /* ============================================================
    FETCH ORIGINAL PROOF
    MODERATOR ONLY
+
+   IMPORTANT:
+   This endpoint must NEVER be used by the customer
+   View Verified Proof button.
 ============================================================ */
 
 export async function fetchProofBlob(
   reviewId: string
 ): Promise<Blob> {
+  const token = getAccessToken();
+
   const res = await fetch(
     `${API_BASE}${proofDownloadUrl(reviewId)}`,
     {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${token}`,
       },
     }
   );
 
   if (!res.ok) {
-    throw new Error("Unable to load original proof");
+    throw new Error(
+      "Unable to load original proof"
+    );
   }
 
   return res.blob();
@@ -410,6 +418,9 @@ export function proofPreviewUrl(
 /* ============================================================
    FETCH REDACTED PROOF PREVIEW
    CUSTOMER VISIBLE
+
+   This fetches ONLY the redacted proof.
+   The original proof endpoint is NOT used here.
 ============================================================ */
 
 export async function fetchProofPreviewBlob(
@@ -417,12 +428,14 @@ export async function fetchProofPreviewBlob(
 ): Promise<Blob> {
   const token = getAccessToken();
 
-  const headers: HeadersInit = {};
+  const headers: HeadersInit = {
+    Accept: "application/pdf",
+  };
 
   /*
-    If customer is logged in, send the token.
-    If customer is not logged in, the public endpoint
-    can still work without Authorization.
+    If the customer is logged in, send the access token.
+    If the preview endpoint is public, it can still work
+    without the Authorization header.
   */
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -442,30 +455,56 @@ export async function fetchProofPreviewBlob(
     );
   }
 
-  return res.blob();
+  const blob = await res.blob();
+
+  /*
+    Force the browser Blob to behave like a PDF.
+    This helps Chrome open the document in its PDF viewer
+    instead of treating it as a downloadable file.
+  */
+  return new Blob(
+    [blob],
+    {
+      type:
+        res.headers.get("content-type") ||
+        "application/pdf",
+    }
+  );
 }
 
 
 /* ============================================================
    OPEN REDACTED PROOF PREVIEW
    CUSTOMER VISIBLE
+
+   IMPORTANT:
+   This does NOT download the original proof.
+
+   It:
+   1. Opens a new browser tab immediately.
+   2. Fetches the redacted proof.
+   3. Creates a temporary Blob URL.
+   4. Opens that Blob URL in the new tab.
 ============================================================ */
 
 export async function openProofPreview(
   reviewId: string
 ): Promise<void> {
   /*
-    Open the new tab immediately so the browser
-    does not block it as a popup.
+    Open the tab immediately because browsers may block
+    a tab opened only after an async fetch.
   */
-  const previewWindow = window.open(
-    "",
-    "_blank"
-  );
+  const previewWindow =
+    window.open(
+      "",
+      "_blank"
+    );
 
   try {
     const blob =
-      await fetchProofPreviewBlob(reviewId);
+      await fetchProofPreviewBlob(
+        reviewId
+      );
 
     const blobUrl =
       URL.createObjectURL(blob);
@@ -475,17 +514,20 @@ export async function openProofPreview(
         blobUrl;
     } else {
       /*
-        Fallback if browser blocked the new tab.
+        Fallback if the browser blocked the popup.
       */
-      window.location.href = blobUrl;
+      window.location.href =
+        blobUrl;
     }
 
     /*
-      Give the browser enough time to load the
-      blob before releasing the object URL.
+      Keep the Blob URL alive long enough for Chrome
+      to load the PDF.
     */
     setTimeout(() => {
-      URL.revokeObjectURL(blobUrl);
+      URL.revokeObjectURL(
+        blobUrl
+      );
     }, 60000);
 
   } catch (error) {
