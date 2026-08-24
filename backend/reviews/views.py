@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.db.models import Q
 from django.http import FileResponse, Http404
@@ -16,13 +18,18 @@ from .models import (
     ReviewProof,
     ReviewStatus,
 )
+
 from .permissions import ReviewAccessPermission
+
 from .serializers import (
     HelpfulVoteSerializer,
     ReviewCreateSerializer,
     ReviewDetailSerializer,
     ReviewListSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================
@@ -281,6 +288,36 @@ class ProofUploadView(APIView):
             )
 
         # ----------------------------------------------------
+        # STORAGE DIAGNOSTIC
+        # ----------------------------------------------------
+
+        logger.warning(
+            "PROOF STORAGE CONFIG: backend=%s bucket=%s "
+            "region=%s endpoint=%s addressing=%s",
+            settings.STORAGES.get("default", {}).get("BACKEND"),
+            getattr(
+                settings,
+                "AWS_STORAGE_BUCKET_NAME",
+                None,
+            ),
+            getattr(
+                settings,
+                "AWS_S3_REGION_NAME",
+                None,
+            ),
+            getattr(
+                settings,
+                "AWS_S3_ENDPOINT_URL",
+                None,
+            ),
+            getattr(
+                settings,
+                "AWS_S3_ADDRESSING_STYLE",
+                None,
+            ),
+        )
+
+        # ----------------------------------------------------
         # CREATE PROOF
         # ----------------------------------------------------
 
@@ -486,4 +523,3 @@ class HelpfulVoteViewSet(viewsets.ModelViewSet):
         return Response(
             status=status.HTTP_204_NO_CONTENT
         )
-    
