@@ -66,7 +66,6 @@ X_FRAME_OPTIONS = "DENY"
 
 SECURE_REFERRER_POLICY = "same-origin"
 
-
 # ---------------------------------------------------------
 # PRIVATE PROOF STORAGE - BACKBLAZE B2
 # ---------------------------------------------------------
@@ -75,22 +74,30 @@ if os.environ.get("USE_S3_PROOF_STORAGE", "false").lower() == "true":
 
     INSTALLED_APPS += ["storages"]
 
-    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    AWS_ACCESS_KEY_ID = os.environ.get(
+        "AWS_ACCESS_KEY_ID",
+        "",
+    ).strip()
+
+    AWS_SECRET_ACCESS_KEY = os.environ.get(
+        "AWS_SECRET_ACCESS_KEY",
+        "",
+    ).strip()
 
     AWS_STORAGE_BUCKET_NAME = os.environ.get(
-        "AWS_PRIVATE_BUCKET_NAME"
-    )
+        "AWS_PRIVATE_BUCKET_NAME",
+        "",
+    ).strip()
 
     AWS_S3_REGION_NAME = os.environ.get(
         "AWS_S3_REGION_NAME",
         "us-east-005",
-    )
+    ).strip()
 
     AWS_S3_ENDPOINT_URL = os.environ.get(
         "AWS_S3_ENDPOINT_URL",
         "https://s3.us-east-005.backblazeb2.com",
-    )
+    ).strip()
 
     AWS_S3_SIGNATURE_VERSION = "s3v4"
 
