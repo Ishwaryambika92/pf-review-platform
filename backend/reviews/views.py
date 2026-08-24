@@ -671,23 +671,21 @@ class ProofPreviewUploadView(APIView):
             status=status.HTTP_201_CREATED,
         )
 
-
 # ============================================================
-# REDACTED PROOF PREVIEW DOWNLOAD
+# REDACTED PROOF PREVIEW
 # CUSTOMER / PUBLIC
 # ============================================================
 
 class ProofPreviewDownloadView(APIView):
     """
-    Customer-facing REDACTED proof.
+    Customer-facing REDACTED proof preview.
 
     IMPORTANT:
-        This endpoint NEVER returns proof.file.
-
-        It returns ONLY proof.preview_file.
-
-    The preview becomes available only after the
-    review becomes public.
+        - NEVER returns the original proof.file
+        - ONLY returns proof.preview_file
+        - Original proof remains private
+        - Preview is available only for public reviews
+        - Browser should OPEN the file instead of downloading it
     """
 
     permission_classes = [
@@ -719,18 +717,17 @@ class ProofPreviewDownloadView(APIView):
             ReviewStatus.PUBLISHED_UNVERIFIED,
         ):
             raise PermissionDenied(
-                "Proof preview is not available "
-                "for this review."
+                "Proof preview is not available for this review."
             )
 
         # ----------------------------------------------------
-        # PROOF MUST EXIST
+        # ORIGINAL PROOF RECORD MUST EXIST
         # ----------------------------------------------------
 
-        if not hasattr(review, "proof"):
+        try:
+            proof = review.proof
+        except ReviewProof.DoesNotExist:
             raise Http404
-
-        proof = review.proof
 
         # ----------------------------------------------------
         # REDACTED PREVIEW MUST EXIST
@@ -740,7 +737,7 @@ class ProofPreviewDownloadView(APIView):
             raise Http404
 
         # ----------------------------------------------------
-        # CONTENT TYPE
+        # DETERMINE CONTENT TYPE
         # ----------------------------------------------------
 
         content_type = getattr(
@@ -750,9 +747,28 @@ class ProofPreviewDownloadView(APIView):
         )
 
         if not content_type:
-            content_type = (
-                "application/octet-stream"
-            )
+            filename = getattr(
+                proof,
+                "preview_filename",
+                "",
+            ) or ""
+
+            filename_lower = filename.lower()
+
+            if filename_lower.endswith(".pdf"):
+                content_type = "application/pdf"
+
+            elif filename_lower.endswith(".jpg"):
+                content_type = "image/jpeg"
+
+            elif filename_lower.endswith(".jpeg"):
+                content_type = "image/jpeg"
+
+            elif filename_lower.endswith(".png"):
+                content_type = "image/png"
+
+            else:
+                content_type = "application/octet-stream"
 
         # ----------------------------------------------------
         # FILENAME
@@ -765,20 +781,47 @@ class ProofPreviewDownloadView(APIView):
         )
 
         if not filename:
-            filename = (
-                "verified-proof-preview"
-            )
+            filename = "verified-proof-preview"
 
         # ----------------------------------------------------
-        # RETURN ONLY REDACTED PROOF
+        # OPEN REDACTED FILE ONLY
         # ----------------------------------------------------
 
-        return FileResponse(
-            proof.preview_file.open("rb"),
+        file_handle = proof.preview_file.open("rb")
+
+        response = FileResponse(
+            file_handle,
             content_type=content_type,
-            filename=filename,
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # FORCE BROWSER TO DISPLAY THE FILE
+        # INSTEAD OF DOWNLOADING IT
+        # ----------------------------------------------------
+
+        safe_filename = (
+            filename
+            .replace('"', "")
+            .replace("\r", "")
+            .replace("\n", "")
+        )
+
+        response["Content-Disposition"] = (
+            f'inline; filename="{safe_filename}"'
+        )
+
+        # ----------------------------------------------------
+        # SECURITY / CACHE HEADERS
+        # ----------------------------------------------------
+
+        response["X-Content-Type-Options"] = "nosniff"
+
+        response["Cache-Control"] = (
+            "private, no-store, max-age=0"
+        )
+
+        return response
 
 # ============================================================
 # HELPFUL VOTES
