@@ -94,7 +94,7 @@ if os.environ.get("USE_S3_PROOF_STORAGE", "false").lower() == "true":
 
     AWS_S3_SIGNATURE_VERSION = "s3v4"
 
-    AWS_S3_ADDRESSING_STYLE = "virtual"
+    AWS_S3_ADDRESSING_STYLE = "path"
 
     AWS_DEFAULT_ACL = None
 
