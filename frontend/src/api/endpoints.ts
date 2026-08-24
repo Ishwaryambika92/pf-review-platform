@@ -422,20 +422,27 @@ export function proofPreviewUrl(
    This fetches ONLY the redacted proof.
    The original proof endpoint is NOT used here.
 ============================================================ */
+/* ============================================================
+   FETCH REDACTED PROOF PREVIEW
+   CUSTOMER VISIBLE
+============================================================ */
 
 export async function fetchProofPreviewBlob(
   reviewId: string
 ): Promise<Blob> {
   const token = getAccessToken();
 
-  const headers: HeadersInit = {
-    Accept: "application/pdf",
-  };
+  const headers: HeadersInit = {};
 
   /*
-    If the customer is logged in, send the access token.
-    If the preview endpoint is public, it can still work
-    without the Authorization header.
+    Send Authorization only when a token exists.
+
+    IMPORTANT:
+    Do NOT send:
+      Accept: "application/pdf"
+
+    because the backend preview endpoint is returning
+    406 Not Acceptable when that Accept header is used.
   */
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -451,16 +458,15 @@ export async function fetchProofPreviewBlob(
 
   if (!res.ok) {
     throw new Error(
-      "Unable to load verified proof preview"
+      `Unable to load verified proof preview (${res.status})`
     );
   }
 
   const blob = await res.blob();
 
   /*
-    Force the browser Blob to behave like a PDF.
-    This helps Chrome open the document in its PDF viewer
-    instead of treating it as a downloadable file.
+    Preserve the response content type.
+    If the backend does not provide one, use PDF.
   */
   return new Blob(
     [blob],
@@ -471,7 +477,6 @@ export async function fetchProofPreviewBlob(
     }
   );
 }
-
 
 /* ============================================================
    OPEN REDACTED PROOF PREVIEW
