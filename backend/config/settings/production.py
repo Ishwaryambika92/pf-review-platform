@@ -71,20 +71,12 @@ SECURE_REFERRER_POLICY = "same-origin"
 # PRIVATE PROOF STORAGE - BACKBLAZE B2
 # ---------------------------------------------------------
 
-if os.environ.get(
-    "USE_S3_PROOF_STORAGE",
-    "false",
-).lower() == "true":
+if os.environ.get("USE_S3_PROOF_STORAGE", "false").lower() == "true":
 
     INSTALLED_APPS += ["storages"]
 
-    AWS_ACCESS_KEY_ID = os.environ.get(
-        "AWS_ACCESS_KEY_ID"
-    )
-
-    AWS_SECRET_ACCESS_KEY = os.environ.get(
-        "AWS_SECRET_ACCESS_KEY"
-    )
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
     AWS_STORAGE_BUCKET_NAME = os.environ.get(
         "AWS_PRIVATE_BUCKET_NAME"
@@ -106,7 +98,7 @@ if os.environ.get(
 
     AWS_DEFAULT_ACL = None
 
-    AWS_S3_FILE_OVERWRITE = True
+    AWS_S3_FILE_OVERWRITE = False
 
     AWS_QUERYSTRING_AUTH = True
 
