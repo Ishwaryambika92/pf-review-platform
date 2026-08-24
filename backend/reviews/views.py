@@ -670,7 +670,6 @@ class ProofPreviewUploadView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
-
 # ============================================================
 # REDACTED PROOF PREVIEW
 # CUSTOMER / PUBLIC
@@ -691,6 +690,21 @@ class ProofPreviewDownloadView(APIView):
     permission_classes = [
         permissions.AllowAny,
     ]
+
+    def perform_content_negotiation(
+        self,
+        request,
+        force=False,
+    ):
+        """
+        Skip DRF Accept-header negotiation for this raw
+        file response.
+        """
+
+        return (
+            self.get_renderers()[0],
+            "*/*",
+        )
 
     def get(self, request, review_id):
 
@@ -721,7 +735,7 @@ class ProofPreviewDownloadView(APIView):
             )
 
         # ----------------------------------------------------
-        # ORIGINAL PROOF RECORD MUST EXIST
+        # PROOF MUST EXIST
         # ----------------------------------------------------
 
         try:
@@ -737,7 +751,7 @@ class ProofPreviewDownloadView(APIView):
             raise Http404
 
         # ----------------------------------------------------
-        # DETERMINE CONTENT TYPE
+        # CONTENT TYPE
         # ----------------------------------------------------
 
         content_type = getattr(
@@ -747,6 +761,7 @@ class ProofPreviewDownloadView(APIView):
         )
 
         if not content_type:
+
             filename = getattr(
                 proof,
                 "preview_filename",
@@ -787,7 +802,17 @@ class ProofPreviewDownloadView(APIView):
         # OPEN REDACTED FILE ONLY
         # ----------------------------------------------------
 
-        file_handle = proof.preview_file.open("rb")
+        try:
+            file_handle = proof.preview_file.open("rb")
+        except Exception:
+            logger.exception(
+                "Unable to open redacted proof preview."
+            )
+            raise Http404
+
+        # ----------------------------------------------------
+        # RETURN FILE
+        # ----------------------------------------------------
 
         response = FileResponse(
             file_handle,
@@ -795,9 +820,7 @@ class ProofPreviewDownloadView(APIView):
         )
 
         # ----------------------------------------------------
-        # IMPORTANT:
-        # FORCE BROWSER TO DISPLAY THE FILE
-        # INSTEAD OF DOWNLOADING IT
+        # OPEN IN BROWSER
         # ----------------------------------------------------
 
         safe_filename = (
@@ -812,7 +835,7 @@ class ProofPreviewDownloadView(APIView):
         )
 
         # ----------------------------------------------------
-        # SECURITY / CACHE HEADERS
+        # SECURITY HEADERS
         # ----------------------------------------------------
 
         response["X-Content-Type-Options"] = "nosniff"
@@ -823,19 +846,17 @@ class ProofPreviewDownloadView(APIView):
 
         return response
 
+
 # ============================================================
 # HELPFUL VOTES
 # ============================================================
-
-class HelpfulVoteViewSet(
-    viewsets.ModelViewSet
-):
+class HelpfulVoteViewSet(viewsets.ModelViewSet):
     """
     Anyone can mark a review as helpful.
 
     Login is not required.
 
-    Duplicate votes are prevented using either:
+    Duplicate votes are prevented using:
         - logged-in user
         - anonymous browser ID
     """
@@ -863,8 +884,7 @@ class HelpfulVoteViewSet(
         """
         Logged-in users can access their own votes.
 
-        Anonymous users are handled directly using
-        X-Anonymous-Id inside serializer/destroy.
+        Anonymous users are handled using X-Anonymous-Id.
         """
 
         if self.request.user.is_authenticated:
@@ -874,19 +894,11 @@ class HelpfulVoteViewSet(
 
         return HelpfulVote.objects.none()
 
-    def destroy(
-        self,
-        request,
-        *args,
-        **kwargs,
-    ):
-
+    def destroy(self, request, *args, **kwargs):
         review_id = kwargs.get("pk")
 
         anon_id = (
-            request.headers.get(
-                "X-Anonymous-Id"
-            )
+            request.headers.get("X-Anonymous-Id")
             or ""
         ).strip()[:64]
 
@@ -895,7 +907,6 @@ class HelpfulVoteViewSet(
         # ----------------------------------------------------
 
         if request.user.is_authenticated:
-
             vote = (
                 HelpfulVote.objects
                 .filter(
@@ -910,7 +921,6 @@ class HelpfulVoteViewSet(
         # ----------------------------------------------------
 
         elif anon_id:
-
             vote = (
                 HelpfulVote.objects
                 .filter(
@@ -921,7 +931,6 @@ class HelpfulVoteViewSet(
             )
 
         else:
-
             vote = None
 
         # ----------------------------------------------------
