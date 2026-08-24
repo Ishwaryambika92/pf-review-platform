@@ -383,6 +383,140 @@ class ProofDownloadView(APIView):
         if not review or not hasattr(review, "proof"):
             raise Http404
 
+
+
+
+    # ============================================================
+# REDACTED PROOF PREVIEW UPLOAD
+# ============================================================
+
+class ProofPreviewUploadView(APIView):
+    """
+    Staff/moderator uploads a redacted/safe copy of the original proof.
+
+    The original proof remains private.
+    The preview can later be shown publicly after verification.
+    """
+
+    permission_classes = [
+        permissions.IsAuthenticated,
+    ]
+
+    def post(self, request, review_id):
+
+        # ----------------------------------------------------
+        # STAFF / MODERATOR ONLY
+        # ----------------------------------------------------
+
+        is_staff = (
+            request.user.is_staff
+            or request.user.is_moderator
+        )
+
+        if not is_staff:
+            raise PermissionDenied(
+                "Only moderators can upload a proof preview."
+            )
+
+        # ----------------------------------------------------
+        # FIND REVIEW
+        # ----------------------------------------------------
+
+        review = (
+            Review.objects
+            .select_related("proof")
+            .filter(id=review_id)
+            .first()
+        )
+
+        if not review:
+            raise Http404
+
+        # ----------------------------------------------------
+        # ORIGINAL PROOF MUST EXIST
+        # ----------------------------------------------------
+
+        if not hasattr(review, "proof"):
+            raise ValidationError(
+                "This review does not have an original proof."
+            )
+
+        proof = review.proof
+
+        # ----------------------------------------------------
+        # GET REDACTED PREVIEW FILE
+        # ----------------------------------------------------
+
+        preview = request.FILES.get("preview")
+
+        if not preview:
+            raise ValidationError(
+                "Please upload a redacted preview file."
+            )
+
+        # ----------------------------------------------------
+        # SIZE CHECK
+        # ----------------------------------------------------
+
+        if preview.size > settings.PROOF_MAX_SIZE_BYTES:
+            raise ValidationError(
+                "Preview file exceeds the maximum allowed size."
+            )
+
+        # ----------------------------------------------------
+        # TYPE CHECK
+        # ----------------------------------------------------
+
+        allowed_types = getattr(
+            settings,
+            "PROOF_ALLOWED_CONTENT_TYPES",
+            [
+                "image/jpeg",
+                "image/png",
+                "application/pdf",
+            ],
+        )
+
+        if preview.content_type not in allowed_types:
+            raise ValidationError(
+                "Only JPG, PNG or PDF preview files are accepted."
+            )
+
+        # ----------------------------------------------------
+        # SAVE REDACTED PREVIEW
+        # ----------------------------------------------------
+
+        proof.preview_file = preview
+        proof.save(
+            update_fields=["preview_file"]
+        )
+
+        # ----------------------------------------------------
+        # AUDIT LOG
+        # ----------------------------------------------------
+
+        AuditLog.record(
+            actor=request.user,
+            action="proof_preview_uploaded",
+            target=review,
+            meta={
+                "filename": preview.name,
+            },
+        )
+
+        return Response(
+            {
+                "detail": "Redacted proof preview uploaded.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+
+
+
+        
+
         # ----------------------------------------------------
         # STAFF / MODERATOR ONLY
         # ----------------------------------------------------

@@ -6,6 +6,7 @@ from .views import (
     MyReviewsView,
     ProofDownloadView,
     ProofUploadView,
+    ProofPreviewUploadView,
     ReviewViewSet,
 )
 
@@ -43,7 +44,7 @@ urlpatterns = [
         name="my-reviews",
     ),
 
-    # Upload proof for a pending review
+    # Upload original proof for a pending review
     path(
         "<uuid:review_id>/proof/upload/",
         ProofUploadView.as_view(),
@@ -55,5 +56,12 @@ urlpatterns = [
         "<uuid:review_id>/proof/download/",
         ProofDownloadView.as_view(),
         name="proof-download",
+    ),
+
+    # Staff/moderator redacted proof preview upload
+    path(
+        "<uuid:review_id>/proof/preview/upload/",
+        ProofPreviewUploadView.as_view(),
+        name="proof-preview-upload",
     ),
 ] + router.urls
